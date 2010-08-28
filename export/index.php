@@ -1,5 +1,15 @@
 <?php
-/*This script has been tested to work with Wordpress 2.3.2 and Joomla 1.0.12 and will not work with older versions of Wordpress due to major changes in the WP database schema. If this script breaks with a new release of Wordpress or Joomla it will need further work. If any developer puts in work on this script and redistributes it please do not remove the Credits from this file.*/
+/* v3 of this script was been tested to work with Wordpress 2.3.2 and Joomla 1.0.12 and will not work with older versions of Wordpress due to major changes in the WP database schema.
+
+The current version incorporates changes noted in this comment: http://azeemkhan.info/2008/joomla2wordpress-import-wizard-v3/#comment-21848, which is required for the script to work with Wordpress 2.8+ due to a further change in the WP database schema.
+
+This version also incorporates additional changes designed to allow images embedded in Joomla or Mambo articles to also be imported into Wordpress. This feature makes use of a new function 'article_with_images()' defined in a separate file 'images.php'. Additional information is contained in comments in that file.
+
+As currently configured, the script will only import articles that are in the 'published' state and explicitly sets the WP 'post_status' field for the each article to 'publish'. 
+
+These new capabilities have been tested with Mambo 4.5.2 and Wordpress 3.0. NOTE: importing of Joomla links using this version of the script has NOT been tested. 
+
+If this script breaks with a new release of Wordpress or Joomla it will need further work. If any developer puts in work on this script and redistributes it please do not remove the Credits from this file.*/
 $_wp_installing = 1;
 if (!file_exists('../wp-config.php')) 
     die("There doesn't seem to be a <code>wp-config.php</code> file. I need this before we can get started. Need more help? <a href='http://wordpress.org/docs/faq/#wp-config'>We got it</a>. You can <a href='setup-config.php'>create a <code>wp-config.php</code> file through a web interface</a>, but this doesn't work for all server setups. The safest way is to manually create the file.");
@@ -10,6 +20,7 @@ if (!file_exists('config.php'))
 require_once('../wp-config.php');
 //require_once('./upgrade-functions.php');
 require_once('config.php');
+require('images.php');
 
 $guessurl = str_replace('/wp-admin/install.php?step=2', '', 'http://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) );
 
@@ -315,7 +326,7 @@ switch($step) {
     mysql_select_db("$dbh") or die("Could not select database");
 
     /* Performing SQL query */
-    $query = "SELECT id, title, introtext, `fulltext`, created, modified FROM ".$joomlatblprefix."content WHERE `sectionid` = '$section'";
+    $query = "SELECT id, title, introtext, `fulltext`, state, created, modified, images FROM ".$joomlatblprefix."content WHERE `sectionid` = '$section'";
 	//echo $query."<br />\n";
     $result = mysql_query($query) or die("Query failed getting content from section");
 
@@ -324,9 +335,10 @@ switch($step) {
     while ($row = mysql_fetch_assoc($result)) {
 			$import[0][$i] = mysql_escape_string($row["id"]);
 			$import[1][$i] = mysql_escape_string($row["title"]);
-			$import[2][$i] = mysql_escape_string($row["introtext"]."<br /><!--more--><br />".$row["fulltext"]);
+			$import[2][$i] = mysql_escape_string(article_with_images($row));
 			$import[3][$i] = mysql_escape_string($row["created"]);
 			$import[4][$i] = mysql_escape_string($row["modified"]);
+			$import[5][$i] = mysql_escape_string($row["state"]);
 			$i++;
 
     }
@@ -361,8 +373,9 @@ switch($step) {
 
 	$j = 0;
 	while ($j < $i) {
-	
-		
+
+            /* if the mambo/joomla state is 'publish' */	
+	    if ($import[5][$j] == 1) {
 
 		/* Create an acceptable WP post_name */
 		$post_name = sanitize_title_with_dashes($import[1][$j]);
@@ -376,7 +389,7 @@ switch($step) {
 		}
 		
 		/* Do the actual query */
-		$query = "INSERT INTO ".$wptblprefix."posts (id, post_author, post_title, post_content, post_date, post_modified, post_name, post_category) VALUES ('', '$ID5', '{$import[1][$j]}', '{$import[2][$j]}', '{$import[3][$j]}', '{$import[4][$j]}', '$post_name', '$wpsection')";
+		$query = "INSERT INTO ".$wptblprefix."posts (id, post_author, post_title, post_content, post_date, post_modified, post_name, post_status) VALUES ('', '$ID5', '{$import[1][$j]}', '{$import[2][$j]}', '{$import[3][$j]}', '{$import[4][$j]}', '$post_name', 'publish')";
 		/* For debugging purposes */
 		echo "<br />".$query."<br />";
 		$result = mysql_query($query) or die("<p>Query failed inserting Section</p>");
@@ -414,8 +427,10 @@ switch($step) {
 		echo "<br />".$query4."<br />";		
 
 		$result4 = mysql_query($query4) or die("Query failed");
+		
+	    }
 
-		$j++;
+	    $j++;
 	}
 
    /* Closing connection */
@@ -444,7 +459,7 @@ switch($step) {
     mysql_select_db("$dbh") or die("Could not select database");
 
     /* Performing SQL query */
-    $query = "SELECT id, title, introtext, `fulltext`, created, modified FROM ".$joomlatblprefix."content WHERE `catid` = '$category'";
+    $query = "SELECT id, title, introtext, `fulltext`, state, created, modified FROM ".$joomlatblprefix."content WHERE `catid` = '$category'";
 	
 	//kill this later	
     //echo $query."<br />\n";
@@ -455,9 +470,10 @@ switch($step) {
     while ($row = mysql_fetch_assoc($result)) {
 			$import[0][$i] = mysql_escape_string($row["id"]);
 			$import[1][$i] = mysql_escape_string($row["title"]);
-			$import[2][$i] = mysql_escape_string($row["introtext"]."<br /><!--more--><br />".$row["fulltext"]);
+			$import[2][$i] = mysql_escape_string(article_with_images($row));
 			$import[3][$i] = mysql_escape_string($row["created"]);
 			$import[4][$i] = mysql_escape_string($row["modified"]);
+			$import[5][$i] = mysql_escape_string($row["state"]);
 			$i++;
     }
 	    /* Free result set */
@@ -491,7 +507,10 @@ switch($step) {
 
 	$j = 0;
 	while ($j < $i) {
-	
+
+            /* if the mambo/joomla state is 'publish' */
+	    if ($import[5][$j] == 1) {
+
 		/* Create an acceptable WP post_name */
 		$post_name = sanitize_title_with_dashes($import[1][$j]);
 
@@ -504,7 +523,7 @@ switch($step) {
 		}
 		
 		/* Do the actual query */
-		$query = "INSERT INTO ".$wptblprefix."posts (id, post_author, post_title, post_content, post_date, post_modified, post_name, post_category) VALUES ('', '$ID5', '{$import[1][$j]}', '{$import[2][$j]}', '{$import[3][$j]}', '{$import[4][$j]}', '$post_name', '$wpsection')";
+		$query = "INSERT INTO ".$wptblprefix."posts (id, post_author, post_title, post_content, post_date, post_modified, post_name, post_status) VALUES ('', '$ID5', '{$import[1][$j]}', '{$import[2][$j]}', '{$import[3][$j]}', '{$import[4][$j]}', '$post_name', 'publish')";
 //Check this query to see if it works
 //		$query = "INSERT INTO wp_posts (id, post_title, post_content, post_date, post_modified, post_name, post_category) VALUES ('', '{$import[1][$j]}', '{$import[2][$j]}', '{$import[3][$j]}', '{$import[4][$j]}', '$post_name', '$wpsection')";		
 		
@@ -543,7 +562,10 @@ switch($step) {
 
 		$result4 = mysql_query($query4) or die("Query failed");
 
-		$j++;
+            }
+
+	    $j++;
+
 	}
 
    /* Closing connection */
@@ -712,6 +734,9 @@ by Chris Chee of
 <a href="http://rangit.com/software/6-steps-how-to-migrate-from-joomla-to-wordpress/">
 Rangit.com</a><br>
 v3: <a href="http://azeemkhan.info/2008/joomla2wordpress-import-wizard-v3/">Joomla2WordPress Import</a> Wizard by 
-Azeem Khan of <a href="http://www.azeemkhan.info">Azeemkhan.info</a></p></p>
+Azeem Khan of <a href="http://www.azeemkhan.info">Azeemkhan.info</a><br>
+v3.1: Modified by <a href="http://markmthomson.net">Mark Thomson</a> to handle Mambo/Joomla content containing images (also works with Wordpress 2.8+).
+</p></p>
 </body>
 </html>
+
